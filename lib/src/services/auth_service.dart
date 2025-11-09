@@ -1,5 +1,6 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../api/api_client.dart';
+import 'notification_service.dart';
 
 /// AuthService - Usa los endpoints del backend (/api/login/, /api/register/)
 /// El backend valida los JWTs de Supabase internamente.
@@ -10,6 +11,7 @@ class AuthService {
 
   final _storage = const FlutterSecureStorage();
   final ApiClient _api = ApiClient();
+  final NotificationService _notificationService = NotificationService();
 
   static Future<void> init() async {
     // On startup, restore token from secure storage if present
@@ -32,6 +34,9 @@ class AuthService {
     if (access != null && access.isNotEmpty) {
       await _storage.write(key: 'access_token', value: access);
       _api.setAuthToken(access);
+
+      // Registrar token FCM en el backend después de login exitoso
+      await _notificationService.registerTokenInBackend();
     }
 
     return data;
@@ -66,6 +71,9 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    // Desactivar token FCM en el backend
+    await _notificationService.unregisterTokenFromBackend();
+
     await _storage.delete(key: 'access_token');
     _api.clearAuthToken();
   }

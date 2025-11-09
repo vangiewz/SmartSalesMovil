@@ -106,11 +106,13 @@ class _CreateClaimScreenState extends State<CreateClaimScreen> {
                       labelText: 'Venta',
                       border: OutlineInputBorder(),
                     ),
+                    isExpanded: true,
                     items: _ventasElegibles.map((v) {
                       return DropdownMenuItem(
                         value: v['venta_id'] as int,
                         child: Text(
                           'Venta #${v['venta_id']} - ${v['fecha_venta']}',
+                          overflow: TextOverflow.ellipsis,
                         ),
                       );
                     }).toList(),
@@ -129,10 +131,14 @@ class _CreateClaimScreenState extends State<CreateClaimScreen> {
                         labelText: 'Producto',
                         border: OutlineInputBorder(),
                       ),
+                      isExpanded: true,
                       items: _getProductosDeVenta(_selectedVenta!).map((p) {
                         return DropdownMenuItem(
                           value: p['producto_id'] as int,
-                          child: Text(p['producto_nombre'] as String),
+                          child: Text(
+                            p['producto_nombre'] as String,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         );
                       }).toList(),
                       onChanged: (val) {
