@@ -246,47 +246,81 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ProductDetailScreen(product: product),
-          ),
-        );
-      },
-      child: Card(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppMetrics.radiusLg),
-        ),
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppMetrics.radiusLg),
+      ),
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ProductDetailScreen(product: product),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(AppMetrics.radiusLg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Imagen con altura fija para que llene bien la card
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(AppMetrics.radiusLg),
-              ),
-              child: SizedBox(
-                height: 140,
-                child: product.imagenUrl != null
-                    ? CachedNetworkImage(
-                        imageUrl: product.imagenUrl!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: 140,
-                        placeholder: (ctx, url) =>
-                            const Center(child: CircularProgressIndicator()),
-                        errorWidget: (ctx, url, err) =>
-                            const Icon(Icons.image, size: 48),
-                      )
-                    : Container(
-                        color: Colors.grey[200],
-                        child: const Icon(Icons.image, size: 48),
+            // Imagen con badge de stock
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(AppMetrics.radiusLg),
+                  ),
+                  child: SizedBox(
+                    height: 140,
+                    child: product.imagenUrl != null
+                        ? CachedNetworkImage(
+                            imageUrl: product.imagenUrl!,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: 140,
+                            placeholder: (ctx, url) => const Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                            errorWidget: (ctx, url, err) =>
+                                const Icon(Icons.image, size: 48),
+                          )
+                        : Container(
+                            color: Colors.grey[200],
+                            child: const Icon(Icons.image, size: 48),
+                          ),
+                  ),
+                ),
+                // Badge de stock
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: product.stock > 10
+                          ? AppColors.success
+                          : product.stock > 0
+                          ? AppColors.warning
+                          : AppColors.danger,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Stock: ${product.stock}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
                       ),
-              ),
+                    ),
+                  ),
+                ),
+              ],
             ),
             Padding(
-              padding: const EdgeInsets.all(8.0),
+              padding: const EdgeInsets.all(12.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -297,22 +331,16 @@ class _ProductCard extends StatelessWidget {
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
+                      height: 1.3,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 8),
                   Text(
                     '\$${product.precio.toStringAsFixed(2)}',
                     style: TextStyle(
                       color: AppColors.brandPrimary,
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  Text(
-                    'Stock: ${product.stock}',
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
+                      fontSize: 18,
                     ),
                   ),
                 ],

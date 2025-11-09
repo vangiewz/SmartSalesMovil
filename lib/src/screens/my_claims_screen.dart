@@ -45,84 +45,391 @@ class _MyClaimsScreenState extends State<MyClaimsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mis Garantías')),
+      appBar: AppBar(title: const Text('Mis Garantías'), elevation: 0),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _claims.isEmpty
-          ? const Center(child: Text('No tienes reclamos registrados'))
-          : ListView.builder(
-              itemCount: _claims.length,
-              itemBuilder: (ctx, i) {
-                final claim = _claims[i];
-                return Card(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.inbox_outlined, size: 80, color: Colors.grey[300]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No tienes garantías registradas',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppMetrics.radiusLg),
-                  ),
-                  child: ListTile(
-                    leading: _buildStatusIcon(claim['estado']),
-                    title: Text(claim['producto_nombre'] ?? 'Producto'),
-                    subtitle: Text(
-                      'Estado: ${claim['estado']}\n'
-                      'Cantidad: ${claim['cantidad']}\n'
-                      'Venta #${claim['venta_id']}',
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _showClaimDetail(claim),
-                  ),
-                );
-              },
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadClaims,
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _claims.length,
+                itemBuilder: (ctx, i) {
+                  final claim = _claims[i];
+                  return _buildClaimCard(claim);
+                },
+              ),
             ),
     );
   }
 
-  Widget _buildStatusIcon(String? estado) {
-    IconData icon;
-    Color color;
-    switch (estado) {
+  Widget _buildClaimCard(dynamic claim) {
+    final status = claim['estado'] ?? 'Pendiente';
+    final statusColor = _getStatusColor(status);
+    final statusIcon = _getStatusIcon(status);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppMetrics.radiusLg),
+      ),
+      child: InkWell(
+        onTap: () => _showClaimDetail(claim),
+        borderRadius: BorderRadius.circular(AppMetrics.radiusLg),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header con estado
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(statusIcon, color: statusColor, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Garantía #${claim['garantia_id']}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            status,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: Colors.grey[400]),
+                ],
+              ),
+              const Divider(height: 24),
+              // Información del producto
+              Row(
+                children: [
+                  Icon(
+                    Icons.inventory_2_outlined,
+                    size: 20,
+                    color: Colors.grey[600],
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      claim['producto_nombre'] ?? 'Producto',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(
+                    Icons.shopping_bag_outlined,
+                    size: 20,
+                    color: Colors.grey[600],
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Venta #${claim['venta_id']}',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                  ),
+                  const SizedBox(width: 16),
+                  Icon(Icons.numbers, size: 20, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Cant: ${claim['cantidad']}',
+                    style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                  ),
+                ],
+              ),
+              if (claim['hora'] != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.access_time, size: 20, color: Colors.grey[600]),
+                    const SizedBox(width: 8),
+                    Text(
+                      _formatDate(claim['hora']),
+                      style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
       case 'Completado':
-        icon = Icons.check_circle;
-        color = AppColors.success;
-        break;
+        return AppColors.success;
       case 'Rechazado':
-        icon = Icons.cancel;
-        color = AppColors.danger;
-        break;
+        return AppColors.danger;
+      case 'En Proceso':
+        return AppColors.brandPrimary;
       default:
-        icon = Icons.pending;
-        color = AppColors.warning;
+        return AppColors.warning;
     }
-    return Icon(icon, color: color);
+  }
+
+  IconData _getStatusIcon(String status) {
+    switch (status) {
+      case 'Completado':
+        return Icons.check_circle;
+      case 'Rechazado':
+        return Icons.cancel;
+      case 'En Proceso':
+        return Icons.sync;
+      default:
+        return Icons.pending;
+    }
+  }
+
+  String _formatDate(String? dateStr) {
+    if (dateStr == null) return '';
+    try {
+      final date = DateTime.parse(dateStr);
+      return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateStr;
+    }
   }
 
   void _showClaimDetail(dynamic claim) {
+    final status = claim['estado'] ?? 'Pendiente';
+    final statusColor = _getStatusColor(status);
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Garantía #${claim['garantia_id']}'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppMetrics.radiusLg),
+        ),
+        title: Row(
+          children: [
+            Icon(_getStatusIcon(status), color: statusColor, size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Garantía #${claim['garantia_id']}',
+                style: const TextStyle(fontSize: 20),
+              ),
+            ),
+          ],
+        ),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Producto: ${claim['producto_nombre']}'),
-              Text('Estado: ${claim['estado']}'),
-              Text('Cantidad: ${claim['cantidad']}'),
-              Text('Venta ID: ${claim['venta_id']}'),
-              Text('Motivo: ${claim['motivo']}'),
-              if (claim['hora'] != null) Text('Fecha: ${claim['hora']}'),
-              if (claim['reemplazo'] != null)
-                Text('Reemplazo: ${claim['reemplazo']}'),
+              // Estado
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: statusColor),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: statusColor, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Estado: ',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    Text(
+                      status,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: statusColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Detalles
+              _buildDetailRow(
+                Icons.inventory_2_outlined,
+                'Producto',
+                claim['producto_nombre'] ?? 'N/A',
+              ),
+              _buildDetailRow(
+                Icons.shopping_bag_outlined,
+                'Venta ID',
+                '#${claim['venta_id']}',
+              ),
+              _buildDetailRow(
+                Icons.numbers,
+                'Cantidad',
+                '${claim['cantidad']}',
+              ),
+              if (claim['hora'] != null)
+                _buildDetailRow(
+                  Icons.access_time,
+                  'Fecha',
+                  _formatDate(claim['hora']),
+                ),
+              const Divider(height: 24),
+              // Motivo
+              if (claim['motivo'] != null) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.comment_outlined,
+                      size: 20,
+                      color: Colors.grey[600],
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Motivo',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            claim['motivo'],
+                            style: TextStyle(color: Colors.grey[800]),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
+              // Reemplazo
+              if (claim['reemplazo'] != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.autorenew, color: AppColors.success, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Reemplazo: ${claim['reemplazo']}',
+                          style: TextStyle(
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
         actions: [
-          TextButton(
+          TextButton.icon(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cerrar'),
+            icon: const Icon(Icons.close),
+            label: const Text('Cerrar'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.brandPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: Colors.grey[600]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
