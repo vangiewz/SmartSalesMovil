@@ -125,6 +125,16 @@ class ProductDetailScreen extends StatelessWidget {
                   : null,
               icon: const Icon(Icons.add_shopping_cart),
               label: const Text('Agregar al carrito'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.brandPrimary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: Colors.grey[300],
+                disabledForegroundColor: Colors.grey[600],
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppMetrics.radiusLg),
+                ),
+              ),
             ),
           ],
         ),

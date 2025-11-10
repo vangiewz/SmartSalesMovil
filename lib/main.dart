@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'src/theme/app_theme.dart';
 import 'src/services/auth_service.dart';
@@ -40,6 +41,9 @@ Future<void> main() async {
 
   // Inicializar servicio de notificaciones
   await NotificationService().initialize();
+
+  // Inicializar formateo de fechas para español
+  await initializeDateFormatting('es_MX', null);
 
   runApp(const MyApp());
 }
