@@ -10,9 +10,9 @@ class CartItem {
   CartItem({required this.product, this.quantity = 1});
 
   Map<String, dynamic> toJson() => {
-    'product': product.toJson(),
-    'quantity': quantity,
-  };
+        'product': product.toJson(),
+        'quantity': quantity,
+      };
 
   factory CartItem.fromJson(Map<String, dynamic> json) {
     return CartItem(
@@ -36,9 +36,11 @@ class CartService extends ChangeNotifier {
   int get totalItems => _items.fold(0, (sum, item) => sum + item.quantity);
 
   double get total => _items.fold(
-    0.0,
-    (sum, item) => sum + (item.product.precio * item.quantity),
-  );
+        0.0,
+        (sum, item) => sum + (item.product.precio * item.quantity),
+      );
+
+  // ================== PERSISTENCIA ==================
 
   Future<void> _loadCart() async {
     try {
@@ -65,6 +67,9 @@ class CartService extends ChangeNotifier {
     }
   }
 
+  // ================== MÉTODOS PRINCIPALES ==================
+
+  /// Agrega un producto al carrito. Si ya existe, suma la cantidad.
   void addProduct(ProductModel product, {int quantity = 1}) {
     final existing = _items.firstWhere(
       (item) => item.product.id == product.id,
@@ -81,12 +86,14 @@ class CartService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Elimina por completo un producto del carrito.
   void removeProduct(int productId) {
     _items.removeWhere((item) => item.product.id == productId);
     _saveCart();
     notifyListeners();
   }
 
+  /// Setea una cantidad exacta para un producto.
   void updateQuantity(int productId, int quantity) {
     if (quantity <= 0) {
       removeProduct(productId);
@@ -98,11 +105,54 @@ class CartService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Vacía el carrito.
   void clear() {
     _items.clear();
     _saveCart();
     notifyListeners();
   }
+
+  // ================== HELPERS EXTRA (PARA CARRITO POR VOZ) ==================
+
+  /// Devuelve true si el producto ya está en el carrito.
+  bool hasProduct(int productId) {
+    return _items.any((item) => item.product.id == productId);
+  }
+
+  /// Devuelve el CartItem asociado al productId, o null si no existe.
+  CartItem? getItemByProductId(int productId) {
+    try {
+      return _items.firstWhere((item) => item.product.id == productId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Suma `quantityToAdd` a la cantidad actual de un producto que YA está en el carrito.
+  /// Si el producto no existe, no hace nada (ideal para usar combinado con catálogo o voz).
+  void addQuantityForExistingProduct(int productId, int quantityToAdd) {
+    if (quantityToAdd == 0) return;
+
+    final item = getItemByProductId(productId);
+    if (item == null) {
+      debugPrint(
+        'CartService.addQuantityForExistingProduct: productId $productId no está en el carrito.',
+      );
+      return;
+    }
+
+    final newQuantity = item.quantity + quantityToAdd;
+
+    if (newQuantity <= 0) {
+      removeProduct(productId);
+    } else {
+      item.quantity = newQuantity;
+      _saveCart();
+      notifyListeners();
+    }
+  }
+
+  // ================== PAYLOAD PARA CHECKOUT ==================
 
   /// Convierte el carrito al formato correcto para el backend
   /// Si addressId != null, usa "id_direccion"

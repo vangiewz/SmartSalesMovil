@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
+
 import '../theme/app_theme.dart';
 import '../config/routes.dart';
 import '../services/auth_service.dart';
@@ -7,7 +10,6 @@ import '../services/cart_service.dart';
 import '../services/roles_service.dart';
 import '../api/api_client.dart';
 import '../models/product_model.dart';
-import 'package:provider/provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,11 +19,24 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // Canal de voz nativo (coincide con MainActivity)
+  static const _voiceChannel = MethodChannel('smart_sales/voice');
+
+  // Productos destacados
   List<ProductModel> _featuredProducts = [];
   bool _loadingProducts = true;
+
+  // Usuario
   String _userName = 'Cliente SmartSales';
+
+  // Roles / dashboard
   bool _canAccessDashboard = false;
   bool _checkingRoles = true;
+
+  // Carrito por texto / voz
+  bool _escuchando = false;
+  bool _cargandoCarritoVoz = false;
+  final TextEditingController _textoCarritoController = TextEditingController();
 
   @override
   void initState() {
@@ -79,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint('=== CARGANDO PRODUCTOS DESTACADOS ===');
 
       final response = await ApiClient().get(
-        'listadoproductos/', // ENDPOINT CORRECTO
+        'listadoproductos/',
         queryParameters: {'page': 1, 'page_size': 5},
       );
 
@@ -112,6 +127,168 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
   }
+
+  // ================== CARRITO POR TEXTO / VOZ ==================
+
+  Future<void> _handleArmarCarritoPorTexto() async {
+    await _armarCarritoDesdeBackend(_textoCarritoController.text);
+  }
+
+  Future<void> _handleArmarCarritoPorVoz() async {
+    if (_escuchando) return;
+
+    setState(() {
+      _escuchando = true;
+    });
+
+    try {
+      // Llama al método nativo startListening (MainActivity)
+      final text = await _voiceChannel.invokeMethod<String>('startListening');
+
+      if (!mounted) return;
+
+      setState(() {
+        _escuchando = false;
+        if (text != null && text.isNotEmpty) {
+          _textoCarritoController.text = text;
+        }
+      });
+
+      if (text != null && text.trim().isNotEmpty) {
+        await _armarCarritoDesdeBackend(text);
+      }
+    } on PlatformException catch (e) {
+      debugPrint('[HomeScreen] Error al usar voz: ${e.message}');
+      if (!mounted) return;
+      setState(() {
+        _escuchando = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al usar voz: ${e.message}'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _armarCarritoDesdeBackend(String texto) async {
+    final textoLimpio = texto.trim();
+    if (textoLimpio.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Escribe o dicta una orden para armar el carrito.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _cargandoCarritoVoz = true);
+
+    try {
+      // TODO: reemplazar por el id REAL del usuario autenticado
+      const usuarioId = '00000000-0000-0000-0000-000000000000';
+
+      final resp = await ApiClient().post(
+        'carrito-voz/carrito-voz/',
+        data: {
+          'usuario_id': usuarioId,
+          'texto': textoLimpio,
+          'limite_items': 10,
+        },
+      );
+
+      final data = resp.data as Map<String, dynamic>;
+      final List<dynamic> items = (data['items'] as List?) ?? [];
+
+      if (items.isEmpty) {
+        final mensaje = data['mensaje'] as String?;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              mensaje ?? 'No se detectaron productos en tu orden.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final cart = context.read<CartService>();
+      int totalUnidades = 0;
+
+      for (final dynamic rawItem in items) {
+        final item = rawItem as Map<String, dynamic>;
+        final int productoId = item['producto_id'] as int;
+        final int cantidad = item['cantidad'] as int;
+
+        ProductModel? product;
+
+        // 1) Intentar buscar en los productos destacados ya cargados
+        try {
+          product = _featuredProducts.firstWhere(
+            (p) => p.id == productoId,
+          );
+        } catch (_) {
+          product = null;
+        }
+
+        // 2) Si no está en destacados, intentar cargar detalle del backend
+        if (product == null) {
+          try {
+            final detailResp =
+                await ApiClient().get('listadoproductos/$productoId/');
+            if (detailResp.data != null) {
+              product = ProductModel.fromJson(detailResp.data);
+            }
+          } catch (e) {
+            debugPrint(
+              '[HomeScreen] No se pudo cargar producto $productoId: $e',
+            );
+          }
+        }
+
+        // 3) Si tenemos ProductModel -> addProduct
+        if (product != null) {
+          cart.addProduct(product, quantity: cantidad);
+          totalUnidades += cantidad;
+        } else {
+          // 4) Si no tenemos el modelo, al menos intentamos sumar cantidad
+          cart.addQuantityForExistingProduct(productoId, cantidad);
+          totalUnidades += cantidad;
+        }
+      }
+
+      _textoCarritoController.clear();
+
+      if (totalUnidades > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Se agregaron $totalUnidades producto(s) al carrito desde tu orden.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error carrito voz/texto: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ocurrió un error al interpretar tu orden.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _cargandoCarritoVoz = false);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _textoCarritoController.dispose();
+    super.dispose();
+  }
+
+  // ================== BUILD ==================
 
   @override
   Widget build(BuildContext context) {
@@ -173,6 +350,11 @@ class _HomeScreenState extends State<HomeScreen> {
             // Banner Hero
             _buildHeroBanner(context),
 
+            const SizedBox(height: 16),
+
+            // 🔥 SECCIÓN: CARRITO POR TEXTO / VOZ
+            _buildVoiceCartSection(context),
+
             const SizedBox(height: 24),
 
             // Sección Categorías
@@ -213,6 +395,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  // ================== WIDGETS AUXILIARES ==================
 
   Widget _buildDrawer(BuildContext context) {
     return Drawer(
@@ -452,6 +636,77 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildVoiceCartSection(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Card(
+        elevation: AppMetrics.elevationCard,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppMetrics.radiusMd),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Armar carrito por texto o voz',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _textoCarritoController,
+                onSubmitted: (_) => _handleArmarCarritoPorTexto(),
+                decoration: const InputDecoration(
+                  hintText:
+                      'Ej: "agrega dos refrigeradores Samsung y una cocina LG"',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _cargandoCarritoVoz
+                          ? null
+                          : () => _handleArmarCarritoPorTexto(),
+                      icon: _cargandoCarritoVoz
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.add_shopping_cart),
+                      label: const Text('Construir carrito'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.brandPrimary,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: _handleArmarCarritoPorVoz,
+                    icon: Icon(
+                      _escuchando ? Icons.mic_off : Icons.mic,
+                      color: _escuchando ? Colors.red : AppColors.brandPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
