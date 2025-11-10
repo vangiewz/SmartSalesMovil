@@ -13,6 +13,7 @@ import '../screens/comercial_management_screen.dart';
 import '../screens/guarantees_screen.dart';
 import '../screens/create_claim_screen.dart';
 import '../screens/my_claims_screen.dart';
+import '../screens/dashboard_ejecutivo_screen.dart';
 import '../models/product_model.dart';
 
 /// Nombres de rutas centralizados (estilo React Router)
@@ -31,6 +32,7 @@ class AppRoutes {
   static const String guarantees = '/guarantees';
   static const String createClaim = '/create-claim';
   static const String myClaims = '/my-claims';
+  static const String dashboardEjecutivo = '/dashboard-ejecutivo';
 }
 
 /// Generador de rutas con argumentos tipados
@@ -83,6 +85,11 @@ class RouteGenerator {
 
       case AppRoutes.myClaims:
         return MaterialPageRoute(builder: (_) => const MyClaimsScreen());
+
+      case AppRoutes.dashboardEjecutivo:
+        return MaterialPageRoute(
+          builder: (_) => const DashboardEjecutivoScreen(),
+        );
 
       default:
         return MaterialPageRoute(

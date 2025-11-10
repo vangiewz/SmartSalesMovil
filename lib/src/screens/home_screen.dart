@@ -4,6 +4,7 @@ import '../theme/app_theme.dart';
 import '../config/routes.dart';
 import '../services/auth_service.dart';
 import '../services/cart_service.dart';
+import '../services/roles_service.dart';
 import '../api/api_client.dart';
 import '../models/product_model.dart';
 import 'package:provider/provider.dart';
@@ -19,12 +20,15 @@ class _HomeScreenState extends State<HomeScreen> {
   List<ProductModel> _featuredProducts = [];
   bool _loadingProducts = true;
   String _userName = 'Cliente SmartSales';
+  bool _canAccessDashboard = false;
+  bool _checkingRoles = true;
 
   @override
   void initState() {
     super.initState();
     _loadFeaturedProducts();
     _loadUserProfile();
+    _checkDashboardAccess();
   }
 
   Future<void> _loadUserProfile() async {
@@ -37,6 +41,36 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       debugPrint('Error loading user profile: $e');
+    }
+  }
+
+  Future<void> _checkDashboardAccess() async {
+    debugPrint(
+      '[HomeScreen] 🔍 Iniciando verificación de acceso al dashboard...',
+    );
+    setState(() => _checkingRoles = true);
+    try {
+      final hasAccess = await RolesService().puedeAccederDashboardEjecutivo();
+      debugPrint(
+        '[HomeScreen] ✅ Verificación completa. Tiene acceso: $hasAccess',
+      );
+      if (mounted) {
+        setState(() {
+          _canAccessDashboard = hasAccess;
+          _checkingRoles = false;
+        });
+        debugPrint(
+          '[HomeScreen] 📊 Estado actualizado - _canAccessDashboard: $_canAccessDashboard, _checkingRoles: $_checkingRoles',
+        );
+      }
+    } catch (e) {
+      debugPrint('[HomeScreen] ❌ Error checking dashboard access: $e');
+      if (mounted) {
+        setState(() {
+          _canAccessDashboard = false;
+          _checkingRoles = false;
+        });
+      }
     }
   }
 
@@ -264,6 +298,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   route: AppRoutes.guarantees,
                 ),
                 const Divider(),
+
+                // Dashboard Ejecutivo (solo Admin/Analista)
+                if (!_checkingRoles && _canAccessDashboard)
+                  _drawerItem(
+                    context,
+                    icon: Icons.dashboard,
+                    title: 'Dashboard Ejecutivo',
+                    route: AppRoutes.dashboardEjecutivo,
+                    highlighted: true,
+                  ),
+                if (!_checkingRoles && _canAccessDashboard) const Divider(),
+
                 ListTile(
                   leading: Icon(Icons.logout, color: AppColors.danger),
                   title: Text(
@@ -292,14 +338,38 @@ class _HomeScreenState extends State<HomeScreen> {
     required IconData icon,
     required String title,
     required String route,
+    bool highlighted = false,
   }) {
-    return ListTile(
-      leading: Icon(icon, color: AppColors.brandPrimary),
-      title: Text(title),
-      onTap: () {
-        Navigator.of(context).pop(); // Cerrar drawer
-        Navigator.of(context).pushNamed(route);
-      },
+    return Container(
+      decoration: highlighted
+          ? BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.brandPrimary.withOpacity(0.1),
+                  AppColors.brandAccent.withOpacity(0.1),
+                ],
+              ),
+            )
+          : null,
+      child: ListTile(
+        leading: Icon(
+          icon,
+          color: highlighted ? AppColors.brandPrimary : AppColors.brandPrimary,
+        ),
+        title: Text(
+          title,
+          style: highlighted
+              ? TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.brandPrimary,
+                )
+              : null,
+        ),
+        onTap: () {
+          Navigator.of(context).pop(); // Cerrar drawer
+          Navigator.of(context).pushNamed(route);
+        },
+      ),
     );
   }
 

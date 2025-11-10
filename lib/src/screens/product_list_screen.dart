@@ -105,6 +105,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
           IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: _showFilterDialog,
+            tooltip: 'Filtros',
           ),
         ],
       ),
@@ -232,6 +233,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
               Navigator.of(ctx).pop();
               _loadProducts();
             },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.brandPrimary,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Aplicar'),
           ),
         ],
