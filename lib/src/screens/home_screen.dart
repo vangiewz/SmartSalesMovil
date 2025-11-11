@@ -172,115 +172,179 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _armarCarritoDesdeBackend(String texto) async {
-    final textoLimpio = texto.trim();
-    if (textoLimpio.isEmpty) {
+  final textoLimpio = texto.trim();
+  if (textoLimpio.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Escribe o dicta una orden para armar el carrito.'),
+      ),
+    );
+    return;
+  }
+
+  // Helpers locales para parsear valores que pueden venir como num/String/null
+  double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      // por si viene con coma decimal
+      final normalized = value.replaceAll(',', '.');
+      return double.tryParse(normalized) ?? 0.0;
+    }
+    return 0.0;
+  }
+
+  int _toInt(dynamic value, {int defaultValue = 0}) {
+    if (value == null) return defaultValue;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) {
+      return int.tryParse(value) ?? defaultValue;
+    }
+    return defaultValue;
+  }
+
+  setState(() => _cargandoCarritoVoz = true);
+
+  try {
+    // TODO: reemplazar por el id REAL del usuario autenticado
+    const usuarioId = '00000000-0000-0000-0000-000000000000';
+
+    final resp = await ApiClient().post(
+      'carrito-voz/carrito-voz/',
+      data: {
+        'usuario_id': usuarioId,
+        'texto': textoLimpio,
+        'limite_items': 10,
+      },
+    );
+
+    final data = resp.data as Map<String, dynamic>;
+    final List<dynamic> items = (data['items'] as List?) ?? [];
+
+    if (items.isEmpty) {
+      final mensaje = data['mensaje'] as String?;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Escribe o dicta una orden para armar el carrito.'),
+        SnackBar(
+          content: Text(
+            mensaje ?? 'No se detectaron productos en tu orden.',
+          ),
         ),
       );
       return;
     }
 
-    setState(() => _cargandoCarritoVoz = true);
+    final cart = context.read<CartService>();
+    int totalUnidades = 0;
 
-    try {
-      // TODO: reemplazar por el id REAL del usuario autenticado
-      const usuarioId = '00000000-0000-0000-0000-000000000000';
+    for (final dynamic rawItem in items) {
+      final item = rawItem as Map<String, dynamic>;
+      debugPrint('[CarritoVoz] RAW item: $item');
 
-      final resp = await ApiClient().post(
-        'carrito-voz/carrito-voz/',
-        data: {
-          'usuario_id': usuarioId,
-          'texto': textoLimpio,
-          'limite_items': 10,
-        },
+      final int productoId = _toInt(item['producto_id']);
+      final int cantidad = _toInt(item['cantidad'], defaultValue: 1);
+
+      debugPrint(
+        '[CarritoVoz] Procesando producto_id=$productoId, cantidad=$cantidad',
       );
 
-      final data = resp.data as Map<String, dynamic>;
-      final List<dynamic> items = (data['items'] as List?) ?? [];
+      ProductModel? product;
 
-      if (items.isEmpty) {
-        final mensaje = data['mensaje'] as String?;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              mensaje ?? 'No se detectaron productos en tu orden.',
-            ),
-          ),
+      // 1) Intentar buscar en los productos destacados ya cargados
+      try {
+        product = _featuredProducts.firstWhere(
+          (p) => p.id == productoId,
         );
-        return;
+        debugPrint('[CarritoVoz] Encontrado en destacados: ${product.nombre}');
+      } catch (_) {
+        product = null;
       }
 
-      final cart = context.read<CartService>();
-      int totalUnidades = 0;
-
-      for (final dynamic rawItem in items) {
-        final item = rawItem as Map<String, dynamic>;
-        final int productoId = item['producto_id'] as int;
-        final int cantidad = item['cantidad'] as int;
-
-        ProductModel? product;
-
-        // 1) Intentar buscar en los productos destacados ya cargados
+      // 2) Si no está en destacados, intentar cargar detalle del backend
+      if (product == null) {
         try {
-          product = _featuredProducts.firstWhere(
-            (p) => p.id == productoId,
+          final detailResp = await ApiClient().get(
+            'carrito-voz/productos-carrito/',
+            queryParameters: {'ids': productoId.toString()},
           );
-        } catch (_) {
-          product = null;
-        }
 
-        // 2) Si no está en destacados, intentar cargar detalle del backend
-        if (product == null) {
-          try {
-            final detailResp =
-                await ApiClient().get('listadoproductos/$productoId/');
-            if (detailResp.data != null) {
-              product = ProductModel.fromJson(detailResp.data);
-            }
-          } catch (e) {
+          if (detailResp.data is List &&
+              (detailResp.data as List).isNotEmpty) {
+            product = ProductModel.fromJson(
+              (detailResp.data as List).first as Map<String, dynamic>,
+            );
             debugPrint(
-              '[HomeScreen] No se pudo cargar producto $productoId: $e',
+              '[CarritoVoz] Cargado detalle desde productos-carrito para $productoId',
             );
           }
-        }
-
-        // 3) Si tenemos ProductModel -> addProduct
-        if (product != null) {
-          cart.addProduct(product, quantity: cantidad);
-          totalUnidades += cantidad;
-        } else {
-          // 4) Si no tenemos el modelo, al menos intentamos sumar cantidad
-          cart.addQuantityForExistingProduct(productoId, cantidad);
-          totalUnidades += cantidad;
+        } catch (e) {
+          debugPrint(
+            '[CarritoVoz] No se pudo cargar detalle de $productoId desde productos-carrito: $e',
+          );
         }
       }
 
-      _textoCarritoController.clear();
+      // 3) Si sigue siendo null, armar un ProductModel mínimo con los datos del item
+      if (product == null) {
+        final double precio = _toDouble(
+          item['precio_unitario'] ?? item['precio'],
+        );
 
-      if (totalUnidades > 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Se agregaron $totalUnidades producto(s) al carrito desde tu orden.',
-            ),
-          ),
+        final String nombre =
+            (item['nombre'] as String?) ?? 'Producto $productoId';
+
+        final int stock = _toInt(item['stock'], defaultValue: 999999);
+        final int tiempoGarantia =
+            _toInt(item['tiempogarantia'], defaultValue: 0);
+
+        product = ProductModel(
+          id: productoId,
+          nombre: nombre,
+          precio: precio,
+          stock: stock,
+          tiempogarantia: tiempoGarantia,
+          imagenUrl: item['imagen_url'] as String?,
+          marca: null,
+          tipoproducto: null,
+          vendedor: null,
+        );
+
+        debugPrint(
+          '[CarritoVoz] Construido ProductModel mínimo para $productoId ($nombre)',
         );
       }
-    } catch (e) {
-      debugPrint('Error carrito voz/texto: $e');
+
+      // 4) Ahora SIEMPRE tenemos un ProductModel válido → usar addProduct
+      cart.addProduct(product, quantity: cantidad);
+      totalUnidades += cantidad;
+    }
+
+    _textoCarritoController.clear();
+
+    if (totalUnidades > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ocurrió un error al interpretar tu orden.'),
+        SnackBar(
+          content: Text(
+            'Se agregaron $totalUnidades producto(s) al carrito desde tu orden.',
+          ),
         ),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _cargandoCarritoVoz = false);
-      }
+    }
+  } catch (e) {
+    debugPrint('Error carrito voz/texto: $e');
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Ocurrió un error al interpretar tu orden.'),
+      ),
+    );
+  } finally {
+    if (mounted) {
+      setState(() => _cargandoCarritoVoz = false);
     }
   }
+}
+
+
 
   @override
   void dispose() {
